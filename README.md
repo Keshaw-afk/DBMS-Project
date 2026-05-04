@@ -21,10 +21,29 @@
 
 ## 📸 System Preview
 
+### 🖥️ Executive Dashboard
+The central command hub providing a high-level overview of institutional health. Monitor real-time metrics including total enrollment, course distribution, and critical administrative alerts through a streamlined, data-rich interface.
+
 <p align="center">
-  <img src="image1.png" width="30%" alt="Dashboard">
-  <img src="image2.png" width="30%" alt="Scholar List">
-  <img src="image3.png" width="30%" alt="Financial Terminal">
+  <img src="image1.png" width="95%" alt="Executive Dashboard">
+</p>
+
+---
+
+### 👥 Scholar Management Portal
+Experience full-lifecycle student administration. This module allows for granular control over scholar records, from initial admission and department allocation to tracking academic milestones and contact information.
+
+<p align="center">
+  <img src="image2.png" width="95%" alt="Scholar Management Portal">
+</p>
+
+---
+
+### 💳 Financial Command Center (Treasury)
+A robust financial engine designed for precision. Manage complex fee structures, process secure payments, and track outstanding dues across the entire institution with automated status updates and audit-ready reporting.
+
+<p align="center">
+  <img src="image3.png" width="95%" alt="Financial Command Center">
 </p>
 
 ## 🛠️ Technology Stack
