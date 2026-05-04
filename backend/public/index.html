@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TITAN COMMAND | Panoramic ERP</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Full-width Layout -->
+    <div class="panoramic-shell">
+        <!-- Top Executive Bar -->
+        <header class="executive-bar">
+            <div class="exec-content">
+                <div class="brand-wing">
+                    <div class="logo-circle">
+                        <i class="fas fa-university fa-2x" style="color:var(--brand)"></i>
+                    </div>
+                    <div class="title-stack">
+                        <h1>TITAN <span class="gold-text">REGISTRY</span></h1>
+                        <small>ADVANCED INSTITUTIONAL COMMAND • V4.0</small>
+                    </div>
+                </div>
+                
+                <div class="search-wing">
+                    <div class="omnisearch-container">
+                        <div class="search-bar-modern">
+                            <i class="fas fa-terminal"></i>
+                            <input type="text" id="global-search" placeholder="Type command or search scholars..." autocomplete="off">
+                            <button class="search-action-btn" onclick="executeOmnisearch()">EXECUTE</button>
+                        </div>
+                        <div id="search-results-dropdown" class="search-dropdown">
+                            <!-- Results injected here -->
+                        </div>
+                    </div>
+                </div>
+
+                <div class="user-wing">
+                    <div class="status-chip"><span class="pulse-dot"></span> LIVE SYNC</div>
+                    <div class="admin-profile">
+                        <div class="info">
+                            <strong>SYSTEM ADMIN</strong>
+                            <small>CHANCELLOR ACCESS</small>
+                        </div>
+                        <img src="https://ui-avatars.com/api/?name=Admin&background=C41E3A&color=FFC72C" alt="Admin">
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Command Navigation -->
+        <nav class="command-nav">
+            <div class="nav-ribbon">
+                <div class="nav-btn active" data-page="dashboard"><i class="fas fa-microchip"></i> Dashboard</div>
+                <div class="nav-btn" data-page="students"><i class="fas fa-users"></i> scholars</div>
+                <div class="nav-btn" data-page="enrollments"><i class="fas fa-id-badge"></i> admissions</div>
+                <div class="nav-btn" data-page="attendance-entry"><i class="fas fa-check-double"></i> attendance</div>
+                <div class="nav-btn" data-page="grade-entry"><i class="fas fa-file-signature"></i> grading</div>
+                <div class="nav-btn" data-page="performance"><i class="fas fa-trophy"></i> performance</div>
+                <div class="nav-btn" data-page="fees"><i class="fas fa-landmark"></i> treasury</div>
+                <div class="nav-btn" data-page="admin-tools"><i class="fas fa-terminal"></i> terminal</div>
+            </div>
+        </nav>
+
+        <!-- Dynamic Content Canvas -->
+        <main class="main-canvas">
+            <div class="watermark-bg"></div>
+            <div id="content-area" class="canvas-grid">
+                <!-- Content will be injected here -->
+            </div>
+        </main>
+    </div>
+
+    <!-- Modals & Overlays -->
+    <div class="modal-overlay" id="global-modal">
+        <div class="modal-card">
+            <!-- Modal content -->
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+    <script src="app.js"></script>
+</body>
+</html>
