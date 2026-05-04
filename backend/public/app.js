@@ -53,10 +53,22 @@ async function loadModule(name) {
 }
 
 async function renderDashboard(area) {
-    const stats = await fetch(`${API_URL}/dashboard`).then(r => r.json());
-    const rev = await fetch(`${API_URL}/analytics/revenue`).then(r => r.json());
-    const trend = await fetch(`${API_URL}/analytics/enrollment-trends`).then(r => r.json());
-    const alerts = await fetch(`${API_URL}/alerts`).then(r => r.json());
+    let stats = {}, rev = [], trend = [], alerts = [];
+    
+    try {
+        const [statsRes, revRes, trendRes, alertsRes] = await Promise.all([
+            fetch(`${API_URL}/dashboard`).then(r => r.json()).catch(() => ({})),
+            fetch(`${API_URL}/analytics/revenue`).then(r => r.json()).catch(() => []),
+            fetch(`${API_URL}/analytics/enrollment-trends`).then(r => r.json()).catch(() => []),
+            fetch(`${API_URL}/alerts`).then(r => r.json()).catch(() => [])
+        ]);
+        stats = statsRes;
+        rev = revRes;
+        trend = trendRes;
+        alerts = alertsRes;
+    } catch (e) {
+        console.error("Dashboard data fetch partial failure", e);
+    }
 
     area.innerHTML = `
         <div class="dashboard-grid">
@@ -67,36 +79,40 @@ async function renderDashboard(area) {
                     
                     <div class="deck-row">
                         <div class="power-card">
-                            <h5>Enrollment</h5>
-                            <div class="val">${stats.totalStudents || 0}</div>
-                            <small class="badge-status bg-green">Active</small>
+                            <h5>Total Scholars</h5>
+                            <div class="val">${stats.students ?? 0}</div>
+                            <small class="badge-status bg-green">Registered</small>
                         </div>
                         <div class="power-card">
-                            <h5>Courses</h5>
-                            <div class="val">${stats.totalCourses || 0}</div>
-                            <small class="badge-status bg-blue">Accredited</small>
+                            <h5>Dues Pending</h5>
+                            <div class="val">${stats.pending ?? 0}</div>
+                            <small class="badge-status bg-red">Incomplete</small>
                         </div>
                         <div class="power-card">
-                            <h5>Departments</h5>
-                            <div class="val">${stats.totalDepartments || 0}</div>
+                            <h5>Total Dues</h5>
+                            <div class="val">₹${(stats.revenue ?? 0).toLocaleString()}</div>
+                            <small class="badge-status bg-blue">Treasury</small>
+                        </div>
+                        <div class="power-card">
+                            <h5>Total Courses</h5>
+                            <div class="val">${stats.courses ?? 0}</div>
                             <small class="badge-status bg-blue">Verified</small>
-                        </div>
-                        <div class="power-card">
-                            <h5>Dues</h5>
-                            <div class="val">${stats.pendingFees || 0}</div>
-                            <small class="badge-status bg-red">Pending</small>
                         </div>
                     </div>
                 </div>
 
                 <div class="grid-2-1">
                     <div class="section-card">
-                        <h2><i class="fas fa-university"></i> Enrollment Trends</h2>
-                        <div style="height:300px"><canvas id="chart-enroll"></canvas></div>
+                        <h2><i class="fas fa-university"></i> Enrollment by Dept</h2>
+                        <div id="data-enroll" class="cmd-table-wrap" style="height:300px; overflow-y:auto;">
+                            <div style="padding:20px; text-align:center;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
                     </div>
                     <div class="section-card">
-                        <h2><i class="fas fa-wallet"></i> Revenue Distribution</h2>
-                        <div style="height:300px"><canvas id="chart-rev"></canvas></div>
+                        <h2><i class="fas fa-wallet"></i> Fee Status Distribution</h2>
+                        <div id="data-rev" class="cmd-table-wrap" style="height:300px; overflow-y:auto;">
+                            <div style="padding:20px; text-align:center;"><i class="fas fa-spinner fa-spin"></i> Loading...</div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -124,27 +140,50 @@ async function renderDashboard(area) {
         </div>
     `;
 
-    renderDashboardCharts(trend, rev);
+    renderDashboardData(trend, rev);
 }
 
-function renderDashboardCharts(trend, rev) {
-    activeCharts.enroll = new Chart(document.getElementById('chart-enroll'), {
-        type: 'bar',
-        data: { 
-            labels: trend.map(t => t.Dept_Name), 
-            datasets: [{ label: 'Scholars', data: trend.map(t => t.count), backgroundColor: '#A51C30', borderRadius: 2 }] 
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } } }
-    });
+function renderDashboardData(trend, rev) {
+    const enrollArea = document.getElementById('data-enroll');
+    const revArea = document.getElementById('data-rev');
 
-    activeCharts.rev = new Chart(document.getElementById('chart-rev'), {
-        type: 'doughnut',
-        data: { 
-            labels: rev.map(r => r.Status), 
-            datasets: [{ data: rev.map(r => r.total), backgroundColor: ['#10b981', '#fbbf24', '#A51C30'], borderWidth: 0 }] 
-        },
-        options: { responsive: true, maintainAspectRatio: false, cutout: '75%' }
-    });
+    if (enrollArea) {
+        if (!trend || trend.length === 0) {
+            enrollArea.innerHTML = '<p style="padding:20px; text-align:center;">No enrollment data available.</p>';
+        } else {
+            enrollArea.innerHTML = `
+                <table>
+                    <thead><tr><th>Department</th><th>Scholar Count</th></tr></thead>
+                    <tbody>
+                        ${trend.map(t => {
+                            const count = t.total ?? 0;
+                            return `<tr><td>${t.Dept_Name}</td><td><b style="color:var(--brand)">${count}</b></td></tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>`;
+        }
+    }
+
+    if (revArea) {
+        if (!rev || rev.length === 0) {
+            revArea.innerHTML = '<p style="padding:20px; text-align:center;">No revenue data available.</p>';
+        } else {
+            const statusColors = { 'PAID': '#10b981', 'PARTIAL': '#fbbf24', 'UNPAID': '#A51C30' };
+            revArea.innerHTML = `
+                <table>
+                    <thead><tr><th>Payment Status</th><th>Scholar Count</th></tr></thead>
+                    <tbody>
+                        ${rev.map(r => {
+                            const count = r.total ?? 0;
+                            return `<tr>
+                                <td><span class="badge-status" style="background:${statusColors[r.Status] || '#94a3b8'}22; color:${statusColors[r.Status] || '#94a3b8'}">${r.Status}</span></td>
+                                <td><b style="color:var(--brand)">${count}</b></td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>`;
+        }
+    }
 }
 
 async function renderStudents(area) {
@@ -203,7 +242,7 @@ async function renderStudents(area) {
                             <div><label>Last Name</label><input type="text" name="last_name" required></div>
                         </div>
                         <div style="margin-bottom:20px;"><label>Email</label><input type="email" name="email" required></div>
-                        <div style="margin-bottom:20px;"><label>Faculty</label>
+                        <div style="margin-bottom:20px;"><label>Department</label>
                             <select name="dept_id" style="width:100%">
                                 ${depts.map(d => `<option value="${d.Dept_ID}">${d.Dept_Name}</option>`).join('')}
                             </select>
@@ -218,6 +257,37 @@ async function renderStudents(area) {
         `;
 
         setupStudentControls(data, renderList);
+
+        const form = document.getElementById('add-stu-form');
+        form.onsubmit = async (e) => {
+            e.preventDefault();
+            const formData = new FormData(form);
+            const studentData = Object.fromEntries(formData.entries());
+            
+            // Add default values for missing fields that the DB expects
+            studentData.admission_year = new Date().getFullYear();
+            studentData.phone = studentData.phone || null;
+            
+            try {
+                const res = await fetch(`${API_URL}/students`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(studentData)
+                });
+                
+                if (res.ok) {
+                    showToast('Scholar Registered Successfully');
+                    const modal = document.getElementById('add-stu-modal');
+                    if (modal) modal.style.display = 'none';
+                    await loadModule('students'); // Re-load to show the new student
+                } else {
+                    const err = await res.json();
+                    alert('Registration Failed: ' + err.error);
+                }
+            } catch (err) {
+                alert('Network Error: ' + err.message);
+            }
+        };
     };
 
     renderList(data);
@@ -402,19 +472,58 @@ window.runAttendanceCheck = async () => {
 // ... Reuse existing renderers with Panoramic Styling ...
 async function renderFees(area) {
     const data = await fetch(`${API_URL}/fees`).then(r => r.json());
+    const students = await fetch(`${API_URL}/students`).then(r => r.json());
+
     area.innerHTML = `
-        <div class="section-card">
-            <h2><i class="fas fa-vault"></i> Financial Registry</h2>
-            <div class="cmd-table-wrap">
-                <table>
-                    <thead><tr><th>Scholar</th><th>Sem</th><th>Due</th><th>Paid</th><th>Status</th></tr></thead>
-                    <tbody>
-                        ${data.map(f => `<tr><td><b>${f.First_Name} ${f.Last_Name}</b></td><td>${f.Semester}</td><td>₹${f.Amount_Due}</td><td>₹${f.Amount_Paid}</td><td><span class="badge status-${f.Status.toLowerCase()}">${f.Status}</span></td></tr>`).join('')}
-                    </tbody>
-                </table>
+        <div class="grid-2-1">
+            <div class="section-card">
+                <h2><i class="fas fa-vault"></i> Financial Registry</h2>
+                <div class="cmd-table-wrap">
+                    <table>
+                        <thead><tr><th>Scholar</th><th>Sem</th><th>Due</th><th>Paid</th><th>Status</th></tr></thead>
+                        <tbody>
+                            ${data.map(f => `<tr><td><b>${f.First_Name} ${f.Last_Name}</b></td><td>${f.Semester}</td><td>₹${f.Amount_Due}</td><td>₹${f.Amount_Paid}</td><td><span class="badge status-${f.Status.toLowerCase()}">${f.Status}</span></td></tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div class="section-card">
+                <h2><i class="fas fa-credit-card"></i> Process Payment</h2>
+                <form id="pay-fee-form">
+                    <div style="margin-bottom:20px;"><label>Select Scholar</label>
+                        <select name="student_id" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                            ${students.map(s => `<option value="${s.Student_ID}">${s.First_Name} ${s.Last_Name} (#${s.Student_ID})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div style="margin-bottom:20px;"><label>Semester</label>
+                        <input type="number" name="semester" value="3" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                    </div>
+                    <div style="margin-bottom:20px;"><label>Amount (₹)</label>
+                        <input type="number" name="amount" required style="width:100%; padding:10px; border-radius:8px; border:1px solid #ddd;">
+                    </div>
+                    <button type="submit" class="btn-cmd btn-prime" style="width:100%">Commit Payment</button>
+                </form>
             </div>
         </div>
     `;
+
+    document.getElementById('pay-fee-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(e.target));
+        const res = await fetch(`${API_URL}/fees/pay`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(fd)
+        });
+        if (res.ok) {
+            showToast('Payment Processed Successfully');
+            await loadModule('fees');
+        } else {
+            const err = await res.json();
+            alert('Payment Error: ' + err.error);
+        }
+    };
 }
 
 // Mapping other modules to section-card style
@@ -458,24 +567,47 @@ async function renderPerformance(area) {
 async function renderEnrollments(area) {
     const stu = await fetch(`${API_URL}/students`).then(r => r.json());
     const cou = await fetch(`${API_URL}/courses`).then(r => r.json());
+    const recent = await fetch(`${API_URL}/enrollments/all`).then(r => r.json());
+
     area.innerHTML = `
-        <div style="max-width: 900px; margin: 0 auto;" class="section-card">
-            <h2><i class="fas fa-id-badge"></i> Authorize Course Enrollment</h2>
-            <form id="enroll-form">
-                <div style="margin-bottom:25px;"><label>Scholar (Searchable)</label>
-                    <div id="stu-search-container" data-name="student_id"></div>
+        <div class="grid-2-1">
+            <div class="section-card">
+                <h2><i class="fas fa-id-badge"></i> Student Course Enrollment</h2>
+                <p style="margin-bottom:20px; color:var(--text-muted)">Register a scholar into a specific academic course for the current semester.</p>
+                <form id="enroll-form">
+                    <div style="margin-bottom:25px;"><label>Scholar (Searchable)</label>
+                        <div id="stu-search-container" data-name="student_id"></div>
+                    </div>
+                    <div style="margin-bottom:25px;"><label>Academic Course</label>
+                        <select name="course_id" style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd; font-weight:700;">
+                            ${cou.map(c => `<option value="${c.Course_ID}">${c.Course_Name} (${c.Dept_Name})</option>`).join('')}
+                        </select>
+                    </div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:25px;">
+                        <div><label>Semester</label><input type="number" name="semester" value="3" required style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd;"></div>
+                        <div><label>Academic Year</label><input type="number" name="academic_year" value="2024" required style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd;"></div>
+                    </div>
+                    <button type="submit" class="btn-cmd btn-prime" style="width:100%">Confirm Enrollment</button>
+                </form>
+            </div>
+
+            <div class="section-card">
+                <h2><i class="fas fa-history"></i> Recent Enrollments</h2>
+                <div class="cmd-table-wrap">
+                    <table>
+                        <thead><tr><th>Scholar</th><th>Course</th><th>Sem</th></tr></thead>
+                        <tbody>
+                            ${recent.slice(-10).reverse().map(e => `
+                                <tr>
+                                    <td>${e.First_Name} ${e.Last_Name}</td>
+                                    <td>${e.Course_Name}</td>
+                                    <td>${e.Semester}</td>
+                                </tr>
+                            `).join('')}
+                        </tbody>
+                    </table>
                 </div>
-                <div style="margin-bottom:25px;"><label>Academic Course</label>
-                    <select name="course_id" style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd; font-weight:700;">
-                        ${cou.map(c => `<option value="${c.Course_ID}">${c.Course_Name} (${c.Dept_Name})</option>`).join('')}
-                    </select>
-                </div>
-                <div style="display:grid; grid-template-columns:1fr 1fr; gap:20px; margin-bottom:25px;">
-                    <div><label>Semester</label><input type="number" name="semester" value="3" required style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd;"></div>
-                    <div><label>Academic Year</label><input type="number" name="academic_year" value="2024" required style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd;"></div>
-                </div>
-                <button type="submit" class="btn-cmd btn-prime" style="width:100%">Authorize & Commit</button>
-            </form>
+            </div>
         </div>
     `;
 
@@ -485,7 +617,10 @@ async function renderEnrollments(area) {
         e.preventDefault();
         const fd = Object.fromEntries(new FormData(e.target));
         const res = await fetch(`${API_URL}/enrollments`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(fd) });
-        if (res.ok) { showToast('Authorized Successfully'); loadModule('dashboard'); }
+        if (res.ok) { 
+            showToast('Enrollment Successful'); 
+            await loadModule('enrollments'); 
+        }
         else { const err = await res.json(); alert(err.error); }
     };
 }
@@ -555,34 +690,33 @@ async function renderGradeEntry(area) {
                         <div><label>Marks Obtained</label><input type="number" name="marks" required style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd;"></div>
                         <div><label>Total Max</label><input type="number" name="max_marks" value="100" style="width:100%; padding:15px; border-radius:12px; border:1px solid #ddd;"></div>
                     </div>
-                    <button type="submit" class="btn-cmd btn-prime" style="width:100%">Authorize Marks Entry</button>
-                </form>
-            </div>
+                    <button type="submit" class="btn-cmd btn-prime" style="width:100%">Post Marks</button>
+                    </form>
+                    </div>
 
-            <div class="section-card">
-                <h2><i class="fas fa-chart-line"></i> Top Performers</h2>
-                <div class="cmd-table-wrap">
+                    <div class="section-card">
+                    <h2><i class="fas fa-chart-line"></i> Top Performers</h2>
+                    <div class="cmd-table-wrap">
                     <table>
                         <thead><tr><th>Scholar</th><th>SGPA</th></tr></thead>
                         <tbody>
                             ${performance.slice(0, 10).map(p => `<tr><td>${p.First_Name} ${p.Last_Name}</td><td><b style="color:var(--brand)">${parseFloat(p.SGPA).toFixed(2)}</b></td></tr>`).join('')}
                         </tbody>
                     </table>
-                </div>
-            </div>
-        </div>
-    `;
+                    </div>
+                    </div>
+                    </div>
+                    `;
 
-    initSearchableSelect('grade-enroll-search-container', enrolls.map(e => ({ id: e.Enroll_ID, label: `${e.First_Name} ${e.Last_Name} - ${e.Course_Name}` })), 'id', 'label');
+                    initSearchableSelect('grade-enroll-search-container', enrolls.map(e => ({ id: e.Enroll_ID, label: `${e.First_Name} ${e.Last_Name} - ${e.Course_Name}` })), 'id', 'label');
 
-    document.getElementById('grade-form').onsubmit = async (e) => {
-        e.preventDefault();
-        const fd = Object.fromEntries(new FormData(e.target));
-        const res = await fetch(`${API_URL}/admin/post-grade`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(fd) });
-        if (res.ok) { showToast('Authorized'); loadModule('grade-entry'); }
-    };
-}
-
+                    document.getElementById('grade-form').onsubmit = async (e) => {
+                    e.preventDefault();
+                    const fd = Object.fromEntries(new FormData(e.target));
+                    const res = await fetch(`${API_URL}/admin/post-grade`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(fd) });
+                    if (res.ok) { showToast('Grade Posted Successfully'); loadModule('grade-entry'); }
+                    };
+                    }
 async function renderDefaulters(area) {
     const data = await fetch(`${API_URL}/admin/defaulters`).then(r => r.json());
     area.innerHTML = `

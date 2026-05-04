@@ -9,6 +9,10 @@ FOR EACH ROW
 BEGIN
     INSERT INTO Audit_Log (Table_Name, Action, New_Data)
     VALUES ('Student', 'INSERT', JSON_OBJECT('id', NEW.Student_ID, 'name', CONCAT(NEW.First_Name, ' ', NEW.Last_Name), 'email', NEW.Email));
+
+    -- Automatically create a fee record for the student's entry semester
+    INSERT IGNORE INTO FeePayment (Student_ID, Semester, Amount_Due, Status, Due_Date)
+    VALUES (NEW.Student_ID, 1, 50000, 'UNPAID', DATE_ADD(CURDATE(), INTERVAL 30 DAY));
 END //
 
 DROP TRIGGER IF EXISTS student_after_update //

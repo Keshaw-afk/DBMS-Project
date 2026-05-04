@@ -30,17 +30,25 @@ checkConnection();
 // 3. API Endpoints (Must be defined before static/catch-all)
 app.get('/api/dashboard', async (req, res) => {
     try {
-        const [students] = await db.execute('SELECT COUNT(*) as count FROM Student');
-        const [courses] = await db.execute('SELECT COUNT(*) as count FROM Course');
-        const [departments] = await db.execute('SELECT COUNT(*) as count FROM Department');
-        const [pendingFees] = await db.execute('SELECT COUNT(*) as count FROM FeePayment WHERE Status != "PAID"');
-        res.json({
-            totalStudents: students[0].count,
-            totalCourses: courses[0].count,
-            totalDepartments: departments[0].count,
-            pendingFees: pendingFees[0].count
-        });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+        const [[{ total: students }]] = await db.execute('SELECT COUNT(*) as total FROM Student');
+        const [[{ total: courses }]] = await db.execute('SELECT COUNT(*) as total FROM Course');
+        const [[{ total: depts }]] = await db.execute('SELECT COUNT(*) as total FROM Department');
+        const [[{ total: pendingCount }]] = await db.execute('SELECT COUNT(*) as total FROM FeePayment WHERE Status != "PAID"');
+        const [[{ total: debt }]] = await db.execute('SELECT IFNULL(SUM(Amount_Due - Amount_Paid), 0) as total FROM FeePayment WHERE Status != "PAID"');
+        
+        const data = {
+            students: Number(students),
+            courses: Number(courses),
+            departments: Number(depts),
+            pending: Number(pendingCount),
+            revenue: Number(debt)
+        };
+        console.log('Sending Dashboard Data:', data);
+        res.json(data);
+    } catch (err) { 
+        console.error('API Error:', err.message);
+        res.status(500).json({ error: err.message }); 
+    }
 });
 
 app.get('/api/students', async (req, res) => {
@@ -53,9 +61,14 @@ app.get('/api/students', async (req, res) => {
 app.post('/api/students', async (req, res) => {
     const { first_name, last_name, email, phone, dept_id, admission_year } = req.body;
     try {
-        await db.execute('INSERT INTO Student (First_Name, Last_Name, Email, Phone, Dept_ID, Admission_Year) VALUES (?, ?, ?, ?, ?, ?)', [first_name, last_name, email, phone, dept_id, admission_year]);
-        res.json({ message: 'Student Registered' });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+        await db.execute(
+            'INSERT INTO Student (First_Name, Last_Name, Email, Phone, Dept_ID, Admission_Year) VALUES (?, ?, ?, ?, ?, ?)', 
+            [first_name, last_name, email, phone, dept_id, admission_year]
+        );
+        res.json({ message: 'Scholar Registered successfully' });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 app.get('/api/courses', async (req, res) => {
@@ -154,15 +167,17 @@ app.post('/api/admin/attendance', async (req, res) => {
 // Advanced Analytics Endpoints
 app.get('/api/analytics/revenue', async (req, res) => {
     try {
-        const [rows] = await db.execute('SELECT Status, SUM(Amount_Paid) as total FROM FeePayment GROUP BY Status');
-        res.json(rows);
+        const [rows] = await db.execute('SELECT Status, COUNT(*) as total FROM FeePayment GROUP BY Status');
+        const formatted = rows.map(r => ({ ...r, total: Number(r.total) }));
+        res.json(formatted);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/analytics/enrollment-trends', async (req, res) => {
     try {
-        const [rows] = await db.execute('SELECT d.Dept_Name, COUNT(s.Student_ID) as count FROM Department d LEFT JOIN Student s ON d.Dept_ID = s.Dept_ID GROUP BY d.Dept_Name');
-        res.json(rows);
+        const [rows] = await db.execute('SELECT d.Dept_Name, COUNT(s.Student_ID) as total FROM Department d LEFT JOIN Student s ON d.Dept_ID = s.Dept_ID GROUP BY d.Dept_Name');
+        const formatted = rows.map(r => ({ ...r, total: Number(r.total) }));
+        res.json(formatted);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
