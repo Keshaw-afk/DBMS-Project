@@ -1,13 +1,25 @@
--- SIS TITAN - ADVANCED DATABASE INITIALIZATION
+-- SIS TITAN - ADVANCED DATABASE INITIALIZATION (ROBUST & NORMALIZED)
 DROP DATABASE IF EXISTS sis_db;
 CREATE DATABASE sis_db;
 USE sis_db;
 
 -- 1. SCHEMATIC ARCHITECTURE
+
+-- Grade Scheme for normalization of grades
+CREATE TABLE Grade_Scheme (
+    Scheme_ID INT PRIMARY KEY AUTO_INCREMENT,
+    Min_Percentage DECIMAL(5,2) NOT NULL,
+    Max_Percentage DECIMAL(5,2) NOT NULL,
+    Grade_Letter VARCHAR(2) NOT NULL,
+    Grade_Points INT NOT NULL,
+    UNIQUE(Grade_Letter),
+    CONSTRAINT chk_percentage CHECK (Min_Percentage <= Max_Percentage)
+);
+
 CREATE TABLE Department (
     Dept_ID INT PRIMARY KEY AUTO_INCREMENT,
-    Dept_Name VARCHAR(100) NOT NULL,
-    HOD_Name VARCHAR(100),
+    Dept_Name VARCHAR(100) NOT NULL UNIQUE,
+    HOD_ID INT, -- Will be FK to Faculty
     Established_Year INT,
     Building VARCHAR(50)
 );
@@ -23,7 +35,8 @@ CREATE TABLE Student (
     Address TEXT,
     Admission_Year INT,
     Dept_ID INT,
-    FOREIGN KEY (Dept_ID) REFERENCES Department(Dept_ID)
+    FOREIGN KEY (Dept_ID) REFERENCES Department(Dept_ID) ON DELETE SET NULL,
+    INDEX idx_student_dept (Dept_ID)
 );
 
 CREATE TABLE Faculty (
@@ -34,165 +47,170 @@ CREATE TABLE Faculty (
     Designation VARCHAR(50),
     Dept_ID INT,
     Joining_Date DATE,
-    FOREIGN KEY (Dept_ID) REFERENCES Department(Dept_ID)
+    FOREIGN KEY (Dept_ID) REFERENCES Department(Dept_ID) ON DELETE SET NULL,
+    INDEX idx_faculty_dept (Dept_ID)
 );
+
+-- Add HOD_ID FK to Department after Faculty table is created
+ALTER TABLE Department ADD FOREIGN KEY (HOD_ID) REFERENCES Faculty(Faculty_ID) ON DELETE SET NULL;
 
 CREATE TABLE Course (
     Course_ID INT PRIMARY KEY AUTO_INCREMENT,
     Course_Name VARCHAR(100) NOT NULL,
-    Credits INT CHECK (Credits > 0),
+    Credits INT NOT NULL CHECK (Credits > 0),
     Dept_ID INT,
     Faculty_ID INT,
-    Semester_Level INT,
-    Max_Capacity INT DEFAULT 60,
-    FOREIGN KEY (Dept_ID) REFERENCES Department(Dept_ID),
-    FOREIGN KEY (Faculty_ID) REFERENCES Faculty(Faculty_ID)
+    Semester_Level INT CHECK (Semester_Level > 0),
+    Max_Capacity INT DEFAULT 60 CHECK (Max_Capacity > 0),
+    FOREIGN KEY (Dept_ID) REFERENCES Department(Dept_ID) ON DELETE SET NULL,
+    FOREIGN KEY (Faculty_ID) REFERENCES Faculty(Faculty_ID) ON DELETE SET NULL,
+    INDEX idx_course_dept (Dept_ID),
+    INDEX idx_course_faculty (Faculty_ID)
 );
 
 CREATE TABLE Enrollment (
     Enroll_ID INT PRIMARY KEY AUTO_INCREMENT,
-    Student_ID INT,
-    Course_ID INT,
-    Semester INT,
-    Academic_Year INT,
+    Student_ID INT NOT NULL,
+    Course_ID INT NOT NULL,
+    Semester INT NOT NULL,
+    Academic_Year INT NOT NULL,
     Status ENUM('ENROLLED', 'COMPLETED', 'DROPPED') DEFAULT 'ENROLLED',
-    FOREIGN KEY (Student_ID) REFERENCES Student(Student_ID),
-    FOREIGN KEY (Course_ID) REFERENCES Course(Course_ID),
-    UNIQUE(Student_ID, Course_ID, Semester, Academic_Year)
+    FOREIGN KEY (Student_ID) REFERENCES Student(Student_ID) ON DELETE CASCADE,
+    FOREIGN KEY (Course_ID) REFERENCES Course(Course_ID) ON DELETE CASCADE,
+    UNIQUE(Student_ID, Course_ID, Semester, Academic_Year),
+    INDEX idx_enrollment_student (Student_ID),
+    INDEX idx_enrollment_course (Course_ID)
 );
 
 CREATE TABLE Grade (
     Grade_ID INT PRIMARY KEY AUTO_INCREMENT,
-    Enroll_ID INT UNIQUE,
-    Marks_Obtained DECIMAL(5,2),
-    Max_Marks DECIMAL(5,2),
-    Grade_Letter VARCHAR(2),
-    Grade_Points INT,
-    FOREIGN KEY (Enroll_ID) REFERENCES Enrollment(Enroll_ID)
+    Enroll_ID INT UNIQUE NOT NULL,
+    Marks_Obtained DECIMAL(5,2) NOT NULL,
+    Max_Marks DECIMAL(5,2) NOT NULL,
+    FOREIGN KEY (Enroll_ID) REFERENCES Enrollment(Enroll_ID) ON DELETE CASCADE,
+    CONSTRAINT chk_marks CHECK (Marks_Obtained <= Max_Marks)
 );
 
 CREATE TABLE Attendance (
     Attend_ID INT PRIMARY KEY AUTO_INCREMENT,
-    Enroll_ID INT,
-    Session_Date DATE,
-    Status ENUM('P', 'A', 'L'),
-    FOREIGN KEY (Enroll_ID) REFERENCES Enrollment(Enroll_ID)
+    Enroll_ID INT NOT NULL,
+    Session_Date DATE NOT NULL,
+    Status ENUM('P', 'A', 'L') NOT NULL,
+    FOREIGN KEY (Enroll_ID) REFERENCES Enrollment(Enroll_ID) ON DELETE CASCADE,
+    INDEX idx_attendance_enroll (Enroll_ID),
+    INDEX idx_attendance_date (Session_Date)
 );
 
 CREATE TABLE FeePayment (
     Fee_ID INT PRIMARY KEY AUTO_INCREMENT,
-    Student_ID INT,
-    Semester INT,
-    Amount_Due DECIMAL(10,2),
+    Student_ID INT NOT NULL,
+    Semester INT NOT NULL,
+    Amount_Due DECIMAL(10,2) NOT NULL DEFAULT 0.00,
     Amount_Paid DECIMAL(10,2) DEFAULT 0.00,
     Payment_Date DATE,
     Due_Date DATE,
     Status ENUM('PAID', 'PARTIAL', 'UNPAID') DEFAULT 'UNPAID',
-    FOREIGN KEY (Student_ID) REFERENCES Student(Student_ID),
-    UNIQUE(Student_ID, Semester)
+    FOREIGN KEY (Student_ID) REFERENCES Student(Student_ID) ON DELETE CASCADE,
+    UNIQUE(Student_ID, Semester),
+    INDEX idx_fee_student (Student_ID)
 );
 
 CREATE TABLE Audit_Log (
     Log_ID INT PRIMARY KEY AUTO_INCREMENT,
     Table_Name VARCHAR(50),
     Action VARCHAR(10),
-    New_Data TEXT,
+    Old_Data JSON,
+    New_Data JSON,
     Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
--- 2. ADVANCED VIEWS
+CREATE TABLE Alerts (
+    Alert_ID INT PRIMARY KEY AUTO_INCREMENT,
+    Enroll_ID INT,
+    Message TEXT,
+    Timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (Enroll_ID) REFERENCES Enrollment(Enroll_ID) ON DELETE CASCADE
+);
+
+-- 2. ADVANCED VIEWS FOR EASY QUERYING
+
+-- View for mapping grades using Grade_Scheme
+CREATE VIEW Grade_Report AS
+SELECT 
+    g.Grade_ID,
+    g.Enroll_ID,
+    g.Marks_Obtained,
+    g.Max_Marks,
+    (g.Marks_Obtained / g.Max_Marks * 100) as Percentage,
+    gs.Grade_Letter,
+    gs.Grade_Points
+FROM Grade g
+JOIN Grade_Scheme gs ON (g.Marks_Obtained / g.Max_Marks * 100) BETWEEN gs.Min_Percentage AND gs.Max_Percentage;
+
 CREATE VIEW Student_Performance_View AS
 SELECT 
     s.Student_ID, s.First_Name, s.Last_Name, e.Semester,
-    ROUND(SUM(g.Grade_Points * c.Credits) / SUM(c.Credits), 2) AS SGPA,
+    ROUND(SUM(gr.Grade_Points * c.Credits) / SUM(c.Credits), 2) AS SGPA,
     SUM(c.Credits) AS Total_Credits
 FROM Student s
 JOIN Enrollment e ON s.Student_ID = e.Student_ID
-JOIN Grade g ON e.Enroll_ID = g.Enroll_ID
+JOIN Grade_Report gr ON e.Enroll_ID = gr.Enroll_ID
 JOIN Course c ON e.Course_ID = c.Course_ID
 GROUP BY s.Student_ID, e.Semester;
 
-CREATE VIEW Attendance_Defaulters AS
-SELECT s.First_Name, s.Last_Name, c.Course_Name, 
-    ROUND((COUNT(CASE WHEN a.Status = 'P' THEN 1 END) / COUNT(*)) * 100, 2) as Percentage
+CREATE VIEW Attendance_Report AS
+SELECT 
+    e.Enroll_ID,
+    s.Student_ID,
+    s.First_Name,
+    s.Last_Name,
+    c.Course_Name,
+    COUNT(*) as Total_Sessions,
+    SUM(CASE WHEN a.Status = 'P' THEN 1 ELSE 0 END) as Present_Sessions,
+    ROUND((SUM(CASE WHEN a.Status = 'P' THEN 1 ELSE 0 END) / COUNT(*)) * 100, 2) as Percentage
 FROM Enrollment e
 JOIN Student s ON e.Student_ID = s.Student_ID
 JOIN Course c ON e.Course_ID = c.Course_ID
 JOIN Attendance a ON e.Enroll_ID = a.Enroll_ID
-GROUP BY e.Enroll_ID
-HAVING Percentage < 75;
+GROUP BY e.Enroll_ID;
 
--- 3. ADVANCED FUNCTIONS
-DELIMITER //
-CREATE FUNCTION Get_Outstanding_Fee(p_sid INT, p_sem INT) RETURNS DECIMAL(10,2) DETERMINISTIC
-BEGIN
-    DECLARE v_due, v_paid DECIMAL(10,2);
-    SELECT Amount_Due, Amount_Paid INTO v_due, v_paid FROM FeePayment WHERE Student_ID = p_sid AND Semester = p_sem;
-    RETURN IFNULL(v_due - v_paid, 0);
-END //
+CREATE VIEW Attendance_Defaulters AS
+SELECT * FROM Attendance_Report WHERE Percentage < 75;
 
-CREATE FUNCTION Is_Course_Full(p_cid INT) RETURNS BOOLEAN DETERMINISTIC
-BEGIN
-    DECLARE v_count, v_max INT;
-    SELECT COUNT(*) INTO v_count FROM Enrollment WHERE Course_ID = p_cid;
-    SELECT Max_Capacity INTO v_max FROM Course WHERE Course_ID = p_cid;
-    RETURN v_count >= v_max;
-END //
-DELIMITER ;
+-- 3. SEED DATA
 
--- 4. COMPLEX PROCEDURES
-DELIMITER //
-CREATE PROCEDURE Enroll_Student(IN p_sid INT, IN p_cid INT, IN p_sem INT, IN p_year INT)
-BEGIN
-    DECLARE v_exists INT;
-    SELECT COUNT(*) INTO v_exists FROM Enrollment 
-    WHERE Student_ID = p_sid AND Course_ID = p_cid AND Semester = p_sem AND Academic_Year = p_year;
-    
-    IF v_exists > 0 THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Student is already enrolled in this course for the given semester';
-    ELSEIF Is_Course_Full(p_cid) THEN
-        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Course Enrollment Limit Reached';
-    ELSE
-        INSERT INTO Enrollment (Student_ID, Course_ID, Semester, Academic_Year) VALUES (p_sid, p_cid, p_sem, p_year);
-    END IF;
-END //
+INSERT INTO Grade_Scheme (Min_Percentage, Max_Percentage, Grade_Letter, Grade_Points) VALUES
+(90.00, 100.00, 'O', 10),
+(80.00, 89.99, 'A', 9),
+(70.00, 79.99, 'B', 8),
+(60.00, 69.99, 'C', 7),
+(50.00, 59.99, 'D', 6),
+(0.00, 49.99, 'F', 0);
 
-CREATE PROCEDURE Post_Grades(IN p_eid INT, IN p_marks DECIMAL(5,2), IN p_max DECIMAL(5,2))
-BEGIN
-    DECLARE v_points INT;
-    DECLARE v_letter VARCHAR(2);
-    DECLARE v_perc DECIMAL(5,2);
-    SET v_perc = (p_marks / p_max) * 100;
-    IF v_perc >= 90 THEN SET v_letter = 'O', v_points = 10;
-    ELSEIF v_perc >= 80 THEN SET v_letter = 'A', v_points = 9;
-    ELSEIF v_perc >= 70 THEN SET v_letter = 'B', v_points = 8;
-    ELSEIF v_perc >= 60 THEN SET v_letter = 'C', v_points = 7;
-    ELSEIF v_perc >= 50 THEN SET v_letter = 'D', v_points = 6;
-    ELSE SET v_letter = 'F', v_points = 0; END IF;
-    INSERT INTO Grade (Enroll_ID, Marks_Obtained, Max_Marks, Grade_Letter, Grade_Points)
-    VALUES (p_eid, p_marks, p_max, v_letter, v_points) 
-    ON DUPLICATE KEY UPDATE 
-        Marks_Obtained=p_marks, 
-        Max_Marks=p_max,
-        Grade_Letter=v_letter, 
-        Grade_Points=v_points;
-END //
-DELIMITER ;
-
--- 5. MASSIVE SEED DATA (50+ Students)
-INSERT INTO Department (Dept_Name, HOD_Name, Established_Year, Building) VALUES 
-('Computer Science', 'Dr. Smith', 1995, 'Block A'), ('Electronics', 'Dr. Johnson', 1998, 'Block B'), 
-('Mechanical', 'Dr. Williams', 2000, 'Block C'), ('Civil', 'Dr. Davis', 2002, 'Block D'), 
-('Biotech', 'Dr. Moore', 2010, 'Block E');
+INSERT INTO Department (Dept_Name, HOD_ID, Established_Year, Building) VALUES 
+('Computer Science', NULL, 1995, 'Block A'), 
+('Electronics', NULL, 1998, 'Block B'), 
+('Mechanical', NULL, 2000, 'Block C'), 
+('Civil', NULL, 2002, 'Block D'), 
+('Biotech', NULL, 2010, 'Block E');
 
 INSERT INTO Faculty (Name, Email, Designation, Dept_ID) VALUES 
-('Alan Turing', 'alan@sis.com', 'Professor', 1), ('Grace Hopper', 'grace@sis.com', 'Professor', 1),
-('Marie Curie', 'marie@sis.com', 'Professor', 5), ('Nikola Tesla', 'tesla@sis.com', 'Associate Prof', 2);
+('Alan Turing', 'alan@sis.com', 'Professor', 1), 
+('Grace Hopper', 'grace@sis.com', 'Professor', 1),
+('Marie Curie', 'marie@sis.com', 'Professor', 5), 
+('Nikola Tesla', 'tesla@sis.com', 'Associate Prof', 2);
+
+-- Update HODs
+UPDATE Department SET HOD_ID = 1 WHERE Dept_ID = 1;
+UPDATE Department SET HOD_ID = 4 WHERE Dept_ID = 2;
+UPDATE Department SET HOD_ID = 3 WHERE Dept_ID = 5;
 
 INSERT INTO Course (Course_Name, Credits, Dept_ID, Faculty_ID, Semester_Level) VALUES 
-('DBMS', 4, 1, 1, 3), ('Data Structures', 4, 1, 2, 3), ('Analog Circuits', 3, 2, 4, 2), ('Microbiology', 4, 5, 3, 1);
+('DBMS', 4, 1, 1, 3), 
+('Data Structures', 4, 1, 2, 3), 
+('Analog Circuits', 3, 2, 4, 2), 
+('Microbiology', 4, 5, 3, 1);
 
--- Loop-like injection for 50 students
 INSERT INTO Student (First_Name, Last_Name, Email, Dept_ID, Admission_Year) VALUES
 ('Liam', 'Smith', 'liam@mail.com', 1, 2024), ('Olivia', 'Jones', 'olivia@mail.com', 1, 2024),
 ('Noah', 'Taylor', 'noah@mail.com', 2, 2024), ('Emma', 'Brown', 'emma@mail.com', 3, 2024),
@@ -220,16 +238,15 @@ INSERT INTO Student (First_Name, Last_Name, Email, Dept_ID, Admission_Year) VALU
 ('Luke', 'Lee', 'luke@mail.com', 1, 2024), ('Riley', 'Walker', 'riley@mail.com', 2, 2024),
 ('Ezra', 'Harris', 'ezra@mail.com', 3, 2024), ('Zoey', 'Clark', 'zoey@mail.com', 4, 2024);
 
--- Diverse Fee Payments
-TRUNCATE TABLE FeePayment;
+-- Seed Fees
 INSERT INTO FeePayment (Student_ID, Semester, Amount_Due, Amount_Paid, Due_Date, Status)
-SELECT Student_ID, 3, 50000, 
+SELECT Student_ID, 1, 50000, 
     CASE 
         WHEN Student_ID % 5 = 0 THEN 50000 
         WHEN Student_ID % 3 = 0 THEN 20000 
         ELSE 0 
     END,
-    '2024-12-31',
+    DATE_ADD(CURDATE(), INTERVAL 30 DAY),
     CASE 
         WHEN Student_ID % 5 = 0 THEN 'PAID'
         WHEN Student_ID % 3 = 0 THEN 'PARTIAL'
@@ -244,8 +261,7 @@ FROM Student s
 JOIN Course c ON s.Dept_ID = c.Dept_ID
 LIMIT 100;
 
--- Diverse Attendance (last 5 sessions)
-TRUNCATE TABLE Attendance;
+-- Seed Attendance
 INSERT INTO Attendance (Enroll_ID, Session_Date, Status)
 SELECT e.Enroll_ID, d.dt,
     CASE 
@@ -261,18 +277,8 @@ CROSS JOIN (
     SELECT DATE_SUB(CURDATE(), INTERVAL 5 DAY)
 ) d;
 
--- Seed Grades for some enrollments
-INSERT INTO Grade (Enroll_ID, Marks_Obtained, Max_Marks, Grade_Letter, Grade_Points)
-SELECT Enroll_ID, 75 + (Enroll_ID % 20), 100, 
-    CASE 
-        WHEN 75 + (Enroll_ID % 20) >= 90 THEN 'O'
-        WHEN 75 + (Enroll_ID % 20) >= 80 THEN 'A'
-        ELSE 'B'
-    END,
-    CASE 
-        WHEN 75 + (Enroll_ID % 20) >= 90 THEN 10
-        WHEN 75 + (Enroll_ID % 20) >= 80 THEN 9
-        ELSE 8
-    END
+-- Seed Grades
+INSERT INTO Grade (Enroll_ID, Marks_Obtained, Max_Marks)
+SELECT Enroll_ID, 75 + (Enroll_ID % 20), 100
 FROM Enrollment
 LIMIT 30;

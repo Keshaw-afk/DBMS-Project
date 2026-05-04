@@ -1,0 +1,47 @@
+SIS TITAN - OFFICIAL ENTITY RELATIONSHIP DIAGRAM
+================================================
+
+  +-------------------+          +-------------------+          +-------------------+
+  |    DEPARTMENT     |          |      FACULTY      |          |      COURSE       |
+  +-------------------+          +-------------------+          +-------------------+
+  | PK: Dept_ID       |<---+     | PK: Faculty_ID    |<---+     | PK: Course_ID     |
+  | Name (Unique)     |    |     | Name              |    |     | Name              |
+  | HOD_ID (FK) ------|----+     | Email (Unique)    |    +-----| Faculty_ID (FK)   |
+  | Building          |    +-----| Dept_ID (FK)      |    +-----| Dept_ID (FK)      |
+  +---------+---------+          +-------------------+    |     +---------+---------+
+            |                                             |               |
+            |                                             |               |
+            v                                             |               |
+  +---------+---------+                                   |               |
+  |     STUDENT       |                                   |               v
+  +-------------------+          +-------------------+    |     +-------------------+
+  | PK: Student_ID    |          |    ENROLLMENT     |    |     |    ATTENDANCE     |
+  +-------------------+          +-------------------+    |     +-------------------+
+  | First_Name        |          | PK: Enroll_ID     |<---+-----| FK: Enroll_ID     |
+  | Last_Name         |          | FK: Student_ID ---|----+     | Session_Date      |
+  | Email (Unique)    |          | FK: Course_ID  ---|----------| Status (P/A/L)    |
+  | Dept_ID (FK) -----|----+---->| Semester / Year   |          +-------------------+
+  | Admission_Year    |          | Status (Enrolled) |
+  +---------+---------+          +---------+---------+
+            |                              |
+            |                              |
+            v                              |
+  +---------+---------+                    v                    +-------------------+
+  |    FEE_PAYMENT    |          +---------+---------+          |   GRADE_SCHEME    |
+  +-------------------+          |      GRADE        |          +-------------------+
+  | PK: Fee_ID        |          +-------------------+          | PK: Scheme_ID     |
+  | FK: Student_ID ---|----->    | PK: Grade_ID      |          | Min/Max %         |
+  | Semester          |          | FK: Enroll_ID (UK)|<---------| Grade_Letter      |
+  | Amount_Due/Paid   |          | Marks_Obtained    |          | Grade_Points      |
+  +-------------------+          +-------------------+          +-------------------+
+
+Relational Schema Summary:
+-------------------------
+1. Department: Master hub for institutional organization.
+2. Student/Faculty: Core human entities linked to Departments.
+3. Course: Academic offerings linked to Faculty and Dept.
+4. Enrollment: Central transaction entity connecting Students to Courses.
+5. Grade/Attendance/Alerts: Performance metrics linked to Enrollments.
+6. FeePayment: Financial tracking per student/semester.
+7. AuditLog: System-wide integrity and event tracking.
+

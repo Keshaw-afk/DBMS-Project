@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <style>
+        body { font-family: 'Inter', system-ui, sans-serif; padding: 40px; background: white; }
+        .container { border: 2px solid #e2e8f0; border-radius: 12px; padding: 20px; }
+        h1 { text-align: center; color: #1e293b; font-size: 24px; margin-bottom: 5px; }
+        p { text-align: center; color: #64748b; margin-bottom: 30px; }
+    </style>
+</head>
+<body>
+    <h1>SIS TITAN: RELATIONAL SCHEMA</h1>
+    <p>Official Entity-Relationship Diagram - v2.0 (Normalized & ACID Compliant)</p>
+    <div class="mermaid">
+erDiagram
+    DEPARTMENT ||--o{ STUDENT : "belongs_to"
+    DEPARTMENT ||--o{ FACULTY : "staffs"
+    DEPARTMENT ||--o{ COURSE : "offers"
+    FACULTY |o--|| DEPARTMENT : "leads_hod"
+    FACULTY ||--o{ COURSE : "teaches"
+    
+    STUDENT ||--o{ ENROLLMENT : "participates"
+    STUDENT ||--o{ FEE_PAYMENT : "pays_dues"
+    
+    COURSE ||--o{ ENROLLMENT : "has_sessions"
+    
+    ENROLLMENT ||--o| GRADE : "earns"
+    ENROLLMENT ||--o{ ATTENDANCE : "attends"
+    ENROLLMENT ||--o{ ALERTS : "monitors"
+    
+    GRADE_SCHEME ||--o{ GRADE : "maps_points"
+
+    DEPARTMENT {
+        int dept_id PK
+        varchar name UK
+        int hod_id FK
+        varchar building
+    }
+
+    STUDENT {
+        int student_id PK
+        varchar first_name
+        varchar last_name
+        varchar email UK
+        int dept_id FK
+    }
+
+    FACULTY {
+        int faculty_id PK
+        varchar name
+        varchar email UK
+        int dept_id FK
+        varchar designation
+    }
+
+    COURSE {
+        int course_id PK
+        varchar name
+        int credits
+        int dept_id FK
+        int faculty_id FK
+    }
+
+    ENROLLMENT {
+        int enroll_id PK
+        int student_id FK
+        int course_id FK
+        int semester
+        int year
+        enum status
+    }
+
+    GRADE {
+        int grade_id PK
+        int enroll_id FK "UNIQUE"
+        decimal marks
+        decimal max
+    }
+
+    ATTENDANCE {
+        int attend_id PK
+        int enroll_id FK
+        date session_date
+        enum status
+    }
+
+    FEE_PAYMENT {
+        int fee_id PK
+        int student_id FK
+        int semester
+        decimal due
+        decimal paid
+        enum status
+    }
+    </div>
+    <script>
+        mermaid.initialize({ 
+            startOnLoad: true, 
+            theme: 'base',
+            themeVariables: {
+                primaryColor: '#e0f2fe',
+                primaryTextColor: '#0369a1',
+                primaryBorderColor: '#0ea5e9',
+                lineColor: '#64748b',
+                secondaryColor: '#f0fdf4',
+                tertiaryColor: '#fff7ed'
+            }
+        });
+    </script>
+</body>
+</html>
